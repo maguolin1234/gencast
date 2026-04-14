@@ -461,3 +461,118 @@ This repository documents the **working CPU-only HPC route** for the GenCast min
 - batch execution via `nbconvert`
 
 If you later move to GPU, you should revisit the attention path and performance settings instead of assuming this CPU-safe patch is the best long-term configuration.
+
+---
+
+## 15. Final working route on the HPC: where it ran, how it was submitted, and how to inspect results
+
+The final successful route was **not** the original offline CPU notebook and **not** an MPI-style shell script such as `run_test1.sh`.
+
+The actual successful route was:
+
+- working directory: `/data/home/maguolin/gencast/graphcast-main`
+- notebook: `gencast_mini_demo_cpu.offline.cpu_patched.ipynb`
+- execution method: `jupyter nbconvert --execute ...`
+- main outputs:
+  - `gencast_mini_demo_cpu.offline.cpu_patched.ran.ipynb`
+  - `gencast_mini_demo_cpu.offline.cpu_patched.ran.html`
+  - `run_gencast_cpu.offline.cpu_patched.log`
+
+### 15.1 Where to run
+
+Use the `graphcast-main` directory as the working directory:
+
+```bash
+cd /data/home/maguolin/gencast/graphcast-main
+```
+
+Environment preparation, notebook editing, and file checking can be done on the login node.
+For the actual notebook execution, the recommended route is to submit the job to a Slurm compute node.
+
+### 15.2 How to submit
+
+The core execution command is:
+
+```bash
+JAX_PALLAS_INTERPRET=1 \
+jupyter nbconvert --to notebook --execute gencast_mini_demo_cpu.offline.cpu_patched.ipynb \
+  --ExecutePreprocessor.kernel_name=python3 \
+  --output gencast_mini_demo_cpu.offline.cpu_patched.ran.ipynb \
+  --ExecutePreprocessor.timeout=14400 \
+  --log-level=INFO 2>&1 | tee run_gencast_cpu.offline.cpu_patched.log
+```
+
+The recommended HPC submission pattern is to place that command inside a Slurm job script such as:
+
+```bash
+run_gencast_cpu48.sbatch
+```
+
+and submit it with:
+
+```bash
+sbatch run_gencast_cpu48.sbatch
+```
+
+### 15.3 Important clarification
+
+The uploaded `run_test1.sh` is **not** the GenCast submission script.
+It is an OpenFOAM / terrain solver MPI script and should not be used as the GenCast execution template.
+
+### 15.4 How to monitor the job
+
+If submitted through Slurm, check job status with:
+
+```bash
+squeue -u $USER
+```
+
+Watch scheduler stdout/stderr with:
+
+```bash
+tail -f slurm-<jobid>.out
+tail -f slurm-<jobid>.err
+```
+
+### 15.5 How to inspect results
+
+The most important result file is the executed notebook:
+
+```bash
+gencast_mini_demo_cpu.offline.cpu_patched.ran.ipynb
+```
+
+This file contains the executed cells, printed diagnostics, and figures.
+
+For easier viewing outside Jupyter, also open:
+
+```bash
+gencast_mini_demo_cpu.offline.cpu_patched.ran.html
+```
+
+This is the browser-friendly export of the executed notebook.
+
+The main runtime log is:
+
+```bash
+run_gencast_cpu.offline.cpu_patched.log
+```
+
+### 15.6 Fast success check
+
+Use the following commands:
+
+```bash
+grep -nE "CellExecutionError|Traceback|ValueError" run_gencast_cpu.offline.cpu_patched.log || echo "NO_ERRORS"
+ls -lh gencast_mini_demo_cpu.offline.cpu_patched.ran.ipynb
+```
+
+Interpretation:
+
+- `NO_ERRORS` means no major execution error was found in the log.
+- If the `.ran.ipynb` file exists, the patched CPU offline workflow completed successfully.
+
+### 15.7 One-sentence summary
+
+The final working GenCast route on the HPC was:
+run the **patched offline CPU notebook** from `/data/home/maguolin/gencast/graphcast-main` via `jupyter nbconvert --execute ...`, preferably through a Slurm submission script such as `run_gencast_cpu48.sbatch`, then inspect `gencast_mini_demo_cpu.offline.cpu_patched.ran.ipynb`, its HTML export, and the execution log.
